@@ -12,10 +12,17 @@ resources/Sakura.rdef
 resources/icon.png
 src/AboutWindow.cpp
 src/AboutWindow.h
+src/AudioPlayer.cpp
+src/AudioPlayer.h
+src/LocalLibraryScanner.cpp
+src/LocalLibraryScanner.h
 src/MainWindow.cpp
 src/MainWindow.h
+src/Messages.h
 src/SakuraApp.cpp
 src/SakuraApp.h
+src/TrackListItem.cpp
+src/TrackListItem.h
 "
 
 for required_file in $required_files; do

@@ -1,9 +1,9 @@
 resource app_signature "application/x-vnd.sikosis-Sakura";
 
 resource app_version {
-	major = 0, middle = 19, minor = 0,
+	major = 0, middle = 1, minor = 0,
 	variety = B_APPV_DEVELOPMENT, internal = 0,
-	short_info = "Sakura 0.19",
+	short_info = "Sakura 0.1",
 	long_info = "A native music library and player for Haiku"
 };
 
