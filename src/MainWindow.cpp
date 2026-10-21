@@ -78,7 +78,7 @@ MainWindow::MainWindow()
 		fPageTitle(NULL) {
 	BMenuBar* menuBar = new BMenuBar("menu bar");
 	BMenu* applicationMenu = new BMenu(B_TRANSLATE("Sakura"));
-	applicationMenu->AddItem(new BMenuItem(B_TRANSLATE("About Sakura") B_UTF8_ELLIPSIS,
+	applicationMenu->AddItem(new BMenuItem(B_TRANSLATE("About Sakura" B_UTF8_ELLIPSIS),
 		new BMessage(B_ABOUT_REQUESTED)));
 	applicationMenu->AddSeparatorItem();
 	applicationMenu->AddItem(new BMenuItem(B_TRANSLATE("Quit"), new BMessage(B_QUIT_REQUESTED),
@@ -86,7 +86,7 @@ MainWindow::MainWindow()
 	menuBar->AddItem(applicationMenu);
 
 	BMenu* libraryMenu = new BMenu(B_TRANSLATE("Library"));
-	libraryMenu->AddItem(new BMenuItem(B_TRANSLATE("Add music folder") B_UTF8_ELLIPSIS,
+	libraryMenu->AddItem(new BMenuItem(B_TRANSLATE("Add music folder" B_UTF8_ELLIPSIS),
 		new BMessage(kMessageAddFolder), 'O'));
 	libraryMenu->AddItem(new BMenuItem(B_TRANSLATE("Rescan library"),
 		new BMessage(kMessageRescan), 'R'));
@@ -207,7 +207,7 @@ BView* MainWindow::_CreateSourcesView() {
 	localTitle->SetFont(be_bold_font);
 	BStringView* localDetail = new BStringView("local source detail", B_TRANSLATE(
 		"Choose folders to build your library from music stored on this computer."));
-	BButton* addFolder = new BButton("add folder", B_TRANSLATE("Add folder") B_UTF8_ELLIPSIS,
+	BButton* addFolder = new BButton("add folder", B_TRANSLATE("Add folder" B_UTF8_ELLIPSIS),
 		new BMessage(kMessageAddFolder));
 	addFolder->SetEnabled(false);
 

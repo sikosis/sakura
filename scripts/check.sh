@@ -35,4 +35,9 @@ if ! grep -q 'application/x-vnd.sikosis-Sakura' src/SakuraApp.h; then
 	exit 1
 fi
 
+if grep -n 'B_TRANSLATE([^)]*)[[:space:]]*B_UTF8_ELLIPSIS' src/*.cpp; then
+	echo "B_UTF8_ELLIPSIS must be inside B_TRANSLATE()." >&2
+	exit 1
+fi
+
 echo "Sakura source and resource checks passed."
