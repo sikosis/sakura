@@ -41,7 +41,6 @@ static int32 ReadMediaDuration(const entry_ref& ref) {
 			continue;
 
 		media_format format;
-		std::memset(&format, 0, sizeof(format));
 		status_t status = track->EncodedFormat(&format);
 		if (status == B_OK
 			&& (format.type == B_MEDIA_ENCODED_AUDIO || format.type == B_MEDIA_RAW_AUDIO)) {

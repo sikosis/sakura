@@ -8,6 +8,11 @@ SECONDARY_ARCHITECTURES = x86
 
 APP_MIME_SIG = application/x-vnd.sikosis-Sakura
 
+TAGLIB_CONFIG := $(shell command -v taglib-config 2>/dev/null)
+ifeq ($(TAGLIB_CONFIG),)
+$(error TagLib development files are missing. Run: pkgman install taglib_devel)
+endif
+
 SRCS = \
 	src/AboutWindow.cpp \
 	src/AudioPlayer.cpp \
@@ -21,7 +26,7 @@ RSRCS =
 
 LIBS = $(STDCPPLIBS) be media tag translation localestub tracker
 LIBPATHS =
-SYSTEM_INCLUDE_PATHS = /boot/system/develop/headers/taglib
+SYSTEM_INCLUDE_PATHS =
 LOCAL_INCLUDE_PATHS = src
 
 OPTIMIZE = FULL
@@ -30,7 +35,7 @@ DEFINES =
 WARNINGS = ALL
 SYMBOLS :=
 DEBUGGER :=
-COMPILER_FLAGS = -std=c++17
+COMPILER_FLAGS = -std=c++17 $(shell $(TAGLIB_CONFIG) --cflags)
 LINKER_FLAGS =
 APP_VERSION = 0.1
 

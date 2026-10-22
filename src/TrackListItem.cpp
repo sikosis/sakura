@@ -16,7 +16,9 @@ TrackListItem::TrackListItem(const char* title, const char* artist, const char* 
 	if (fDuration > 0) {
 		int32 minutes = fDuration / 60;
 		int32 seconds = fDuration % 60;
-		label.AppendFormat("  ·  %ld:%02ld", (long)minutes, (long)seconds);
+		BString durationLabel;
+		durationLabel.SetToFormat("  ·  %ld:%02ld", (long)minutes, (long)seconds);
+		label.Append(durationLabel);
 	}
 	SetText(label.String());
 }
