@@ -16,6 +16,7 @@ class BListView;
 class BSlider;
 class BStringView;
 class BTabView;
+class BTextControl;
 class BView;
 class AudioPlayer;
 class LocalLibraryScanner;
@@ -38,9 +39,13 @@ private:
 	BView* _CreatePlayerBar();
 	BView* _CreatePlaceholderPage(const char* name, const char* title,
 		const char* detail);
+	void _AddTrack(BMessage* message);
 	void _AddFolder(const entry_ref& folder);
+	void _ClearTrackViews();
 	void _PlaySelectedTrack();
+	bool _RememberFolder(const char* path);
 	void _RescanLibrary();
+	void _SearchLibrary();
 	void _SelectPage(int32 index);
 	void _SetPlaybackState(bool playing);
 
@@ -58,10 +63,12 @@ private:
 	BStringView* fTrackArtist;
 	BStringView* fTrackTitle;
 	BTabView* fLibraryTabs;
+	BTextControl* fSearch;
 	BButton* fPlayButton;
 	LocalLibraryScanner* fScanner;
 	BSlider* fVolumeSlider;
 	std::vector<BString> fFolderPaths;
+	int32 fSearchRequestId;
 	int32 fTrackCount;
 };
 

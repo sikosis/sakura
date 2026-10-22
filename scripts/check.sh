@@ -15,6 +15,8 @@ src/AboutWindow.cpp
 src/AboutWindow.h
 src/AudioPlayer.cpp
 src/AudioPlayer.h
+src/LibraryDatabase.cpp
+src/LibraryDatabase.h
 src/LocalLibraryScanner.cpp
 src/LocalLibraryScanner.h
 src/MainWindow.cpp
@@ -45,6 +47,11 @@ fi
 
 if ! grep -q 'VICN.*BEOS:ICON\|BEOS:ICON.*VICN' resources/Sakura.rdef; then
 	echo "Native application icon is missing from resources/Sakura.rdef" >&2
+	exit 1
+fi
+
+if ! grep -q 'src/LibraryDatabase.cpp' Makefile || ! grep -q 'LIBS.*sqlite3' Makefile; then
+	echo "SQLite library persistence is not included in the build" >&2
 	exit 1
 fi
 

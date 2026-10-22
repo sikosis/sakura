@@ -84,8 +84,9 @@ MainWindow::MainWindow()
 		B_ASYNCHRONOUS_CONTROLS), fCardLayout(NULL), fAudioPlayer(NULL), fFolderPanel(NULL),
 		fAlbumsList(NULL), fArtistsList(NULL), fFoldersList(NULL), fGenresList(NULL),
 		fNavigation(NULL), fSongsList(NULL), fPageTitle(NULL), fSourceStatus(NULL),
-		fTrackArtist(NULL), fTrackTitle(NULL), fLibraryTabs(NULL), fPlayButton(NULL),
-		fScanner(NULL), fVolumeSlider(NULL), fTrackCount(0) {
+		fTrackArtist(NULL), fTrackTitle(NULL), fLibraryTabs(NULL), fSearch(NULL),
+		fPlayButton(NULL), fScanner(NULL), fVolumeSlider(NULL), fSearchRequestId(0),
+		fTrackCount(0) {
 	BMenuBar* menuBar = new BMenuBar("menu bar");
 	BMenu* applicationMenu = new BMenu(B_TRANSLATE("Sakura"));
 	applicationMenu->AddItem(new BMenuItem(B_TRANSLATE("About Sakura" B_UTF8_ELLIPSIS),
@@ -155,6 +156,7 @@ MainWindow::MainWindow()
 	fAudioPlayer = new AudioPlayer(BMessenger(this));
 	fScanner = new LocalLibraryScanner(BMessenger(this));
 	fScanner->Run();
+	fScanner->LoadLibrary();
 	fNavigation->Select(0);
 	_SelectPage(0);
 }
@@ -189,6 +191,10 @@ void MainWindow::MessageReceived(BMessage* message) {
 			_RescanLibrary();
 			break;
 
+		case kMessageSearchChanged:
+			_SearchLibrary();
+			break;
+
 		case B_REFS_RECEIVED:
 		{
 			entry_ref folder;
@@ -202,33 +208,50 @@ void MainWindow::MessageReceived(BMessage* message) {
 			break;
 
 		case kMessageTrackFound:
+			_AddTrack(message);
+			break;
+
+		case kMessageSourceFound:
 		{
 			const char* path = NULL;
-			const char* title = NULL;
-			const char* artist = "";
-			const char* album = "";
-			const char* genre = "";
-			int32 duration = 0;
-			int32 trackNumber = 0;
-			if (message->FindString("title", &title) == B_OK
-				&& message->FindString("path", &path) == B_OK) {
-				message->FindString("artist", &artist);
-				message->FindString("album", &album);
-				message->FindString("genre", &genre);
-				message->FindInt32("duration", &duration);
-				message->FindInt32("track_number", &trackNumber);
-				fSongsList->AddItem(new TrackListItem(title, artist, album, genre, path,
-					duration, trackNumber));
-				AddUniqueListItem(fArtistsList, artist);
-				if (album[0] != '\0') {
-					BString albumLabel(album);
-					if (artist[0] != '\0')
-						albumLabel << "  —  " << artist;
-					AddUniqueListItem(fAlbumsList, albumLabel.String());
-				}
-				AddUniqueListItem(fGenresList, genre);
-				fTrackCount++;
+			if (message->FindString("path", &path) == B_OK)
+				_RememberFolder(path);
+			break;
+		}
+
+		case kMessageLibraryLoaded:
+		{
+			int32 sourceCount = 0;
+			message->FindInt32("source_count", &sourceCount);
+			if (sourceCount == 0) {
+				fSourceStatus->SetText(B_TRANSLATE("No folders added"));
+			} else {
+				BString status;
+				status.SetToFormat(B_TRANSLATE("%ld songs indexed"), (long)fTrackCount);
+				fSourceStatus->SetText(status.String());
 			}
+			break;
+		}
+
+		case kMessageSearchFinished:
+		{
+			int32 requestId = 0;
+			int32 count = 0;
+			message->FindInt32("request_id", &requestId);
+			message->FindInt32("count", &count);
+			if (requestId == fSearchRequestId) {
+				BString status;
+				status.SetToFormat(B_TRANSLATE("%ld songs shown"), (long)count);
+				fSourceStatus->SetText(status.String());
+			}
+			break;
+		}
+
+		case kMessageLibraryError:
+		{
+			const char* error = B_TRANSLATE("The library could not be updated.");
+			message->FindString("message", &error);
+			fSourceStatus->SetText(error);
 			break;
 		}
 
@@ -271,6 +294,10 @@ void MainWindow::MessageReceived(BMessage* message) {
 
 		case kMessageScanFinished:
 		{
+			if (fSearch->Text()[0] != '\0') {
+				_SearchLibrary();
+				break;
+			}
 			BString status;
 			status.SetToFormat(B_TRANSLATE("%ld songs indexed"), (long)fTrackCount);
 			fSourceStatus->SetText(status.String());
@@ -303,9 +330,10 @@ BView* MainWindow::_CreateLibraryView() {
 		BAlignment(B_ALIGN_USE_FULL_WIDTH, B_ALIGN_USE_FULL_HEIGHT));
 	view->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
 
-	BTextControl* search = new BTextControl("search", "", "Search your library", NULL);
-	search->SetExplicitMaxSize(BSize(360.0f, B_SIZE_UNSET));
-	search->SetExplicitAlignment(BAlignment(B_ALIGN_LEFT, B_ALIGN_VERTICAL_CENTER));
+	fSearch = new BTextControl("search", B_TRANSLATE("Search your library"), "", NULL);
+	fSearch->SetModificationMessage(new BMessage(kMessageSearchChanged));
+	fSearch->SetExplicitMaxSize(BSize(360.0f, B_SIZE_UNSET));
+	fSearch->SetExplicitAlignment(BAlignment(B_ALIGN_LEFT, B_ALIGN_VERTICAL_CENTER));
 	BButton* allSources = new BButton("all sources", B_TRANSLATE("All sources"), NULL);
 	allSources->SetEnabled(false);
 	allSources->SetExplicitAlignment(BAlignment(B_ALIGN_LEFT, B_ALIGN_VERTICAL_CENTER));
@@ -334,7 +362,7 @@ BView* MainWindow::_CreateLibraryView() {
 
 	BLayoutBuilder::Group<>(view, B_VERTICAL, 12.0f)
 		.AddGroup(B_HORIZONTAL, 8.0f)
-			.Add(search, 0.0f)
+			.Add(fSearch, 0.0f)
 			.Add(allSources, 0.0f)
 			.AddGlue()
 		.End()
@@ -477,14 +505,65 @@ void MainWindow::_AddFolder(const entry_ref& folder) {
 	if (path.InitCheck() != B_OK)
 		return;
 
-	for (size_t index = 0; index < fFolderPaths.size(); index++) {
-		if (fFolderPaths[index] == path.Path())
-			return;
+	if (_RememberFolder(path.Path()))
+		fScanner->Scan(folder);
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+void MainWindow::_AddTrack(BMessage* message) {
+	int32 requestId = 0;
+	message->FindInt32("request_id", &requestId);
+	if ((requestId > 0 && requestId != fSearchRequestId)
+		|| (requestId == 0 && fSearch->Text()[0] != '\0')) {
+		return;
 	}
 
-	fFolderPaths.push_back(BString(path.Path()));
-	fFoldersList->AddItem(new BStringItem(path.Path()));
-	fScanner->Scan(folder);
+	const char* path = NULL;
+	const char* title = NULL;
+	const char* artist = "";
+	const char* album = "";
+	const char* genre = "";
+	int32 duration = 0;
+	int32 trackNumber = 0;
+	if (message->FindString("title", &title) != B_OK
+		|| message->FindString("path", &path) != B_OK) {
+		return;
+	}
+	message->FindString("artist", &artist);
+	message->FindString("album", &album);
+	message->FindString("genre", &genre);
+	message->FindInt32("duration", &duration);
+	message->FindInt32("track_number", &trackNumber);
+
+	for (int32 index = 0; index < fSongsList->CountItems(); index++) {
+		TrackListItem* existing = dynamic_cast<TrackListItem*>(fSongsList->ItemAt(index));
+		if (existing != NULL && BString(existing->Path()) == path) {
+			delete fSongsList->RemoveItem(index);
+			break;
+		}
+	}
+	fSongsList->AddItem(new TrackListItem(title, artist, album, genre, path, duration,
+		trackNumber));
+	AddUniqueListItem(fArtistsList, artist);
+	if (album[0] != '\0') {
+		BString albumLabel(album);
+		if (artist[0] != '\0')
+			albumLabel << "  —  " << artist;
+		AddUniqueListItem(fAlbumsList, albumLabel.String());
+	}
+	AddUniqueListItem(fGenresList, genre);
+	fTrackCount = fSongsList->CountItems();
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+void MainWindow::_ClearTrackViews() {
+	fAlbumsList->MakeEmpty();
+	fArtistsList->MakeEmpty();
+	fGenresList->MakeEmpty();
+	fSongsList->MakeEmpty();
+	fTrackCount = 0;
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
@@ -516,12 +595,23 @@ void MainWindow::_PlaySelectedTrack() {
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 
+bool MainWindow::_RememberFolder(const char* path) {
+	for (size_t index = 0; index < fFolderPaths.size(); index++) {
+		if (fFolderPaths[index] == path)
+			return false;
+	}
+
+	fFolderPaths.push_back(BString(path));
+	AddUniqueListItem(fFoldersList, path);
+	return true;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
 void MainWindow::_RescanLibrary() {
-	fAlbumsList->MakeEmpty();
-	fArtistsList->MakeEmpty();
-	fGenresList->MakeEmpty();
-	fSongsList->MakeEmpty();
-	fTrackCount = 0;
+	fSearchRequestId++;
+	fSearch->SetText("");
+	_ClearTrackViews();
 	for (size_t index = 0; index < fFolderPaths.size(); index++) {
 		entry_ref folder;
 		if (get_ref_for_path(fFolderPaths[index].String(), &folder) == B_OK)
@@ -529,6 +619,15 @@ void MainWindow::_RescanLibrary() {
 	}
 	if (fFolderPaths.empty())
 		fSourceStatus->SetText(B_TRANSLATE("No folders added"));
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+void MainWindow::_SearchLibrary() {
+	fSearchRequestId++;
+	_ClearTrackViews();
+	fSourceStatus->SetText(B_TRANSLATE("Searching library" B_UTF8_ELLIPSIS));
+	fScanner->Search(fSearch->Text(), fSearchRequestId);
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 

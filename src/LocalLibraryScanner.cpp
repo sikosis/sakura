@@ -2,6 +2,7 @@
 
 #include "Messages.h"
 
+#include <Catalog.h>
 #include <Directory.h>
 #include <Entry.h>
 #include <MediaFile.h>
@@ -10,6 +11,7 @@
 #include <Mime.h>
 #include <Node.h>
 #include <NodeInfo.h>
+#include <OS.h>
 #include <Path.h>
 #include <Query.h>
 #include <String.h>
@@ -20,6 +22,11 @@
 #include <tag.h>
 
 #include <cstring>
+#include <sys/stat.h>
+
+
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "LocalLibraryScanner"
 
 
 static BString ConvertTagString(const TagLib::String& value) {
@@ -63,31 +70,73 @@ LocalLibraryScanner::LocalLibraryScanner(const BMessenger& target)
 
 
 void LocalLibraryScanner::MessageReceived(BMessage* message) {
-	if (message->what != kMessageScanFolder) {
-		BLooper::MessageReceived(message);
-		return;
+	switch (message->what) {
+		case kMessageLoadLibrary:
+			_LoadLibrary();
+			break;
+
+		case kMessageSearchLibrary:
+		{
+			const char* searchText = "";
+			int32 requestId = 0;
+			message->FindString("query", &searchText);
+			message->FindInt32("request_id", &requestId);
+			_Search(searchText, requestId);
+			break;
+		}
+
+		case kMessageScanFolder:
+		{
+			entry_ref folderRef;
+			if (message->FindRef("folder", &folderRef) != B_OK)
+				break;
+
+			BPath folderPath(&folderRef);
+			BDirectory directory(&folderRef);
+			if (folderPath.InitCheck() != B_OK || directory.InitCheck() != B_OK)
+				break;
+			if (_EnsureDatabase() != B_OK) {
+				_SendError(B_TRANSLATE("The library database could not be opened."));
+				break;
+			}
+			if (fDatabase.AddSource(folderPath.Path()) != B_OK
+				|| fDatabase.BeginScan() != B_OK) {
+				_SendError(B_TRANSLATE("The library scan could not be started."));
+				break;
+			}
+
+			BMessage started(kMessageScanStarted);
+			started.AddString("folder", folderPath.Path());
+			fTarget.SendMessage(&started);
+
+			int64 scanToken = real_time_clock_usecs();
+			int32 count = _ScanQuery(folderRef, folderPath.Path(), scanToken);
+			if (count <= 0)
+				count = _ScanDirectory(directory, folderPath.Path(), scanToken);
+			if (fDatabase.RemoveUnseenTracks(folderPath.Path(), scanToken) != B_OK
+				|| fDatabase.CommitScan() != B_OK) {
+				fDatabase.RollbackScan();
+				_SendError(B_TRANSLATE("The library scan could not be saved."));
+				break;
+			}
+
+			BMessage finished(kMessageScanFinished);
+			finished.AddString("folder", folderPath.Path());
+			finished.AddInt32("count", count);
+			fTarget.SendMessage(&finished);
+			break;
+		}
+
+		default:
+			BLooper::MessageReceived(message);
+			break;
 	}
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
 
-	entry_ref folderRef;
-	if (message->FindRef("folder", &folderRef) != B_OK)
-		return;
 
-	BPath folderPath(&folderRef);
-	BDirectory directory(&folderRef);
-	if (folderPath.InitCheck() != B_OK || directory.InitCheck() != B_OK)
-		return;
-
-	BMessage started(kMessageScanStarted);
-	started.AddString("folder", folderPath.Path());
-	fTarget.SendMessage(&started);
-
-	int32 count = _ScanQuery(folderRef, folderPath.Path());
-	if (count <= 0)
-		count = _ScanDirectory(directory, folderPath.Path());
-	BMessage finished(kMessageScanFinished);
-	finished.AddString("folder", folderPath.Path());
-	finished.AddInt32("count", count);
-	fTarget.SendMessage(&finished);
+void LocalLibraryScanner::LoadLibrary() {
+	PostMessage(kMessageLoadLibrary);
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
@@ -96,6 +145,21 @@ void LocalLibraryScanner::Scan(const entry_ref& folder) {
 	BMessage message(kMessageScanFolder);
 	message.AddRef("folder", &folder);
 	PostMessage(&message);
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+void LocalLibraryScanner::Search(const char* searchText, int32 requestId) {
+	BMessage message(kMessageSearchLibrary);
+	message.AddString("query", searchText);
+	message.AddInt32("request_id", requestId);
+	PostMessage(&message);
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+status_t LocalLibraryScanner::_EnsureDatabase() {
+	return fDatabase.Open();
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
@@ -128,17 +192,97 @@ bool LocalLibraryScanner::_IsAudioFile(const BEntry& entry) const {
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 
-int32 LocalLibraryScanner::_ScanDirectory(BDirectory& directory, const char* rootPath) {
+void LocalLibraryScanner::_LoadLibrary() {
+	if (_EnsureDatabase() != B_OK) {
+		_SendError(B_TRANSLATE("The library database could not be opened."));
+		return;
+	}
+
+	std::vector<BString> sources;
+	if (fDatabase.LoadSources(sources) != B_OK) {
+		_SendError(B_TRANSLATE("Saved music folders could not be loaded."));
+		return;
+	}
+	for (size_t index = 0; index < sources.size(); index++) {
+		BMessage source(kMessageSourceFound);
+		source.AddString("path", sources[index].String());
+		fTarget.SendMessage(&source);
+	}
+
+	std::vector<LibraryTrack> tracks;
+	if (fDatabase.LoadTracks("", tracks) != B_OK) {
+		_SendError(B_TRANSLATE("Saved library tracks could not be loaded."));
+		return;
+	}
+	for (size_t index = 0; index < tracks.size(); index++)
+		_SendTrack(tracks[index]);
+
+	BMessage loaded(kMessageLibraryLoaded);
+	loaded.AddInt32("count", (int32)tracks.size());
+	loaded.AddInt32("source_count", (int32)sources.size());
+	fTarget.SendMessage(&loaded);
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+bool LocalLibraryScanner::_ReadTrack(const BEntry& entry, const char* rootPath,
+	LibraryTrack& track) {
+	BPath path;
+	struct stat fileInfo;
+	if (entry.GetPath(&path) != B_OK || entry.GetStat(&fileInfo) != B_OK)
+		return false;
+
+	track.path = path.Path();
+	track.sourcePath = rootPath;
+	track.size = fileInfo.st_size;
+	track.modified = fileInfo.st_mtime;
+	track.title = path.Leaf();
+	int32 extension = track.title.FindLast('.');
+	if (extension > 0)
+		track.title.Truncate(extension);
+	track.duration = 0;
+	track.trackNumber = 0;
+
+	TagLib::FileRef file(path.Path(), true, TagLib::AudioProperties::Fast);
+	if (!file.isNull()) {
+		TagLib::Tag* tag = file.tag();
+		if (tag != NULL) {
+			BString taggedTitle = ConvertTagString(tag->title());
+			if (!taggedTitle.IsEmpty())
+				track.title = taggedTitle;
+			track.artist = ConvertTagString(tag->artist());
+			track.album = ConvertTagString(tag->album());
+			track.genre = ConvertTagString(tag->genre());
+			track.trackNumber = (int32)tag->track();
+		}
+
+		TagLib::AudioProperties* properties = file.audioProperties();
+		if (properties != NULL)
+			track.duration = properties->lengthInSeconds();
+	}
+
+	if (track.duration <= 0) {
+		entry_ref ref;
+		if (entry.GetRef(&ref) == B_OK)
+			track.duration = ReadMediaDuration(ref);
+	}
+	return true;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+int32 LocalLibraryScanner::_ScanDirectory(BDirectory& directory, const char* rootPath,
+	int64 scanToken) {
 	int32 count = 0;
 	BEntry entry;
 	while (directory.GetNextEntry(&entry, false) == B_OK) {
 		if (entry.IsDirectory()) {
 			BDirectory child(&entry);
 			if (child.InitCheck() == B_OK)
-				count += _ScanDirectory(child, rootPath);
+				count += _ScanDirectory(child, rootPath, scanToken);
 		} else if (entry.IsFile() && _IsAudioFile(entry)) {
-			_SendTrack(entry, rootPath);
-			count++;
+			if (_ScanTrack(entry, rootPath, scanToken))
+				count++;
 		}
 	}
 	return count;
@@ -146,7 +290,8 @@ int32 LocalLibraryScanner::_ScanDirectory(BDirectory& directory, const char* roo
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 
-int32 LocalLibraryScanner::_ScanQuery(const entry_ref& folder, const char* rootPath) {
+int32 LocalLibraryScanner::_ScanQuery(const entry_ref& folder, const char* rootPath,
+	int64 scanToken) {
 	BVolume volume(folder.device);
 	if (volume.InitCheck() != B_OK || !volume.KnowsQuery())
 		return B_UNSUPPORTED;
@@ -175,62 +320,81 @@ int32 LocalLibraryScanner::_ScanQuery(const entry_ref& folder, const char* rootP
 			continue;
 		}
 
-		_SendTrack(entry, rootPath);
-		count++;
+		if (_ScanTrack(entry, rootPath, scanToken))
+			count++;
 	}
 	return count;
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 
-void LocalLibraryScanner::_SendTrack(const BEntry& entry, const char* rootPath) {
+bool LocalLibraryScanner::_ScanTrack(const BEntry& entry, const char* rootPath,
+	int64 scanToken) {
 	BPath path;
-	if (entry.GetPath(&path) != B_OK)
-		return;
+	struct stat fileInfo;
+	if (entry.GetPath(&path) != B_OK || entry.GetStat(&fileInfo) != B_OK)
+		return false;
 
-	BString title(path.Leaf());
-	int32 extension = title.FindLast('.');
-	if (extension > 0)
-		title.Truncate(extension);
-	BString artist;
-	BString album;
-	BString genre;
-	int32 duration = 0;
-	int32 trackNumber = 0;
-
-	TagLib::FileRef file(path.Path(), true, TagLib::AudioProperties::Fast);
-	if (!file.isNull()) {
-		TagLib::Tag* tag = file.tag();
-		if (tag != NULL) {
-			BString taggedTitle = ConvertTagString(tag->title());
-			if (!taggedTitle.IsEmpty())
-				title = taggedTitle;
-			artist = ConvertTagString(tag->artist());
-			album = ConvertTagString(tag->album());
-			genre = ConvertTagString(tag->genre());
-			trackNumber = (int32)tag->track();
+	LibraryTrack track;
+	if (fDatabase.FindUnchangedTrack(path.Path(), fileInfo.st_size, fileInfo.st_mtime,
+		track)) {
+		track.sourcePath = rootPath;
+		if (fDatabase.MarkTrackSeen(path.Path(), rootPath, scanToken) != B_OK)
+			return false;
+	} else {
+		if (!_ReadTrack(entry, rootPath, track)
+			|| fDatabase.StoreTrack(track, scanToken) != B_OK) {
+			return false;
 		}
-
-		TagLib::AudioProperties* properties = file.audioProperties();
-		if (properties != NULL)
-			duration = properties->lengthInSeconds();
 	}
 
-	if (duration <= 0) {
-		entry_ref ref;
-		if (entry.GetRef(&ref) == B_OK)
-			duration = ReadMediaDuration(ref);
+	_SendTrack(track);
+	return true;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+void LocalLibraryScanner::_Search(const char* searchText, int32 requestId) {
+	if (_EnsureDatabase() != B_OK) {
+		_SendError(B_TRANSLATE("The library database could not be opened."));
+		return;
 	}
 
+	std::vector<LibraryTrack> tracks;
+	if (fDatabase.LoadTracks(searchText, tracks) != B_OK) {
+		_SendError(B_TRANSLATE("The library search could not be completed."));
+		return;
+	}
+	for (size_t index = 0; index < tracks.size(); index++)
+		_SendTrack(tracks[index], requestId);
+
+	BMessage finished(kMessageSearchFinished);
+	finished.AddInt32("request_id", requestId);
+	finished.AddInt32("count", (int32)tracks.size());
+	fTarget.SendMessage(&finished);
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+void LocalLibraryScanner::_SendError(const char* message) {
+	BMessage error(kMessageLibraryError);
+	error.AddString("message", message);
+	fTarget.SendMessage(&error);
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+void LocalLibraryScanner::_SendTrack(const LibraryTrack& track, int32 requestId) {
 	BMessage found(kMessageTrackFound);
-	found.AddString("path", path.Path());
-	found.AddString("title", title.String());
-	found.AddString("artist", artist.String());
-	found.AddString("album", album.String());
-	found.AddString("genre", genre.String());
-	found.AddInt32("duration", duration);
-	found.AddInt32("track_number", trackNumber);
-	found.AddString("folder", rootPath);
+	found.AddString("path", track.path.String());
+	found.AddString("title", track.title.String());
+	found.AddString("artist", track.artist.String());
+	found.AddString("album", track.album.String());
+	found.AddString("genre", track.genre.String());
+	found.AddInt32("duration", track.duration);
+	found.AddInt32("track_number", track.trackNumber);
+	found.AddString("folder", track.sourcePath.String());
+	found.AddInt32("request_id", requestId);
 	fTarget.SendMessage(&found);
 }
 //---------------------------------------------------------------------------------------------------------------------------------//

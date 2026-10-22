@@ -16,6 +16,7 @@ endif
 SRCS = \
 	src/AboutWindow.cpp \
 	src/AudioPlayer.cpp \
+	src/LibraryDatabase.cpp \
 	src/LocalLibraryScanner.cpp \
 	src/MainWindow.cpp \
 	src/SakuraApp.cpp \
@@ -24,7 +25,7 @@ SRCS = \
 RDEFS = resources/Sakura.rdef
 RSRCS =
 
-LIBS = $(STDCPPLIBS) be media tag translation localestub tracker
+LIBS = $(STDCPPLIBS) be media sqlite3 tag translation localestub tracker
 LIBPATHS =
 SYSTEM_INCLUDE_PATHS =
 LOCAL_INCLUDE_PATHS = src
