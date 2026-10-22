@@ -15,9 +15,9 @@
 #include <String.h>
 #include <Volume.h>
 
-#include <taglib/audioproperties.h>
-#include <taglib/fileref.h>
-#include <taglib/tag.h>
+#include <audioproperties.h>
+#include <fileref.h>
+#include <tag.h>
 
 #include <cstring>
 

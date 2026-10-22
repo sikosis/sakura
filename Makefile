@@ -21,7 +21,7 @@ RSRCS =
 
 LIBS = $(STDCPPLIBS) be media tag translation localestub tracker
 LIBPATHS =
-SYSTEM_INCLUDE_PATHS =
+SYSTEM_INCLUDE_PATHS = /boot/system/develop/headers/taglib
 LOCAL_INCLUDE_PATHS = src
 
 OPTIMIZE = FULL
