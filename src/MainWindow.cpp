@@ -111,11 +111,13 @@ MainWindow::MainWindow()
 		BAlignment(B_ALIGN_LEFT, B_ALIGN_USE_FULL_HEIGHT));
 
 	fPageTitle = PageHeading("page title", B_TRANSLATE("Library"));
+	fPageTitle->SetExplicitAlignment(BAlignment(B_ALIGN_LEFT, B_ALIGN_VERTICAL_CENTER));
 
 	BView* content = new BView("page content", B_WILL_DRAW);
 	content->SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
 	content->SetExplicitAlignment(
 		BAlignment(B_ALIGN_USE_FULL_WIDTH, B_ALIGN_USE_FULL_HEIGHT));
+	content->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
 	fCardLayout = new BCardLayout();
 	content->SetLayout(fCardLayout);
 	fCardLayout->AddView(_CreateLibraryView());
@@ -128,6 +130,7 @@ MainWindow::MainWindow()
 	workspace->SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
 	workspace->SetExplicitAlignment(
 		BAlignment(B_ALIGN_USE_FULL_WIDTH, B_ALIGN_USE_FULL_HEIGHT));
+	workspace->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
 	BLayoutBuilder::Group<>(workspace, B_VERTICAL, 10.0f)
 		.SetInsets(12.0f)
 		.Add(fPageTitle)
@@ -275,13 +278,19 @@ BView* MainWindow::_CreateLibraryView() {
 	view->SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
 	view->SetExplicitAlignment(
 		BAlignment(B_ALIGN_USE_FULL_WIDTH, B_ALIGN_USE_FULL_HEIGHT));
+	view->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
 
 	BTextControl* search = new BTextControl("search", "", "Search your library", NULL);
 	search->SetExplicitMaxSize(BSize(360.0f, B_SIZE_UNSET));
+	search->SetExplicitAlignment(BAlignment(B_ALIGN_LEFT, B_ALIGN_VERTICAL_CENTER));
 	BButton* allSources = new BButton("all sources", B_TRANSLATE("All sources"), NULL);
 	allSources->SetEnabled(false);
+	allSources->SetExplicitAlignment(BAlignment(B_ALIGN_LEFT, B_ALIGN_VERTICAL_CENTER));
 
 	fLibraryTabs = new BTabView("collection tabs", B_WIDTH_FROM_LABEL);
+	fLibraryTabs->SetExplicitAlignment(
+		BAlignment(B_ALIGN_USE_FULL_WIDTH, B_ALIGN_USE_FULL_HEIGHT));
+	fLibraryTabs->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
 	fLibraryTabs->AddTab(CreateCollectionTab(B_TRANSLATE("Artists"),
 		B_TRANSLATE("Artists will appear here after your first library scan.")));
 	fLibraryTabs->AddTab(CreateCollectionTab(B_TRANSLATE("Albums"),
