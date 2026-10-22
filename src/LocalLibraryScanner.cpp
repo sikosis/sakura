@@ -4,6 +4,8 @@
 
 #include <Directory.h>
 #include <Entry.h>
+#include <MediaFile.h>
+#include <MediaTrack.h>
 #include <Message.h>
 #include <Mime.h>
 #include <Node.h>
@@ -13,7 +15,46 @@
 #include <String.h>
 #include <Volume.h>
 
+#include <taglib/audioproperties.h>
+#include <taglib/fileref.h>
+#include <taglib/tag.h>
+
 #include <cstring>
+
+
+static BString ConvertTagString(const TagLib::String& value) {
+	if (value.isEmpty())
+		return BString();
+	return BString(value.to8Bit(true).c_str());
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+static int32 ReadMediaDuration(const entry_ref& ref) {
+	BMediaFile mediaFile(&ref);
+	if (mediaFile.InitCheck() != B_OK)
+		return 0;
+
+	for (int32 index = 0; index < mediaFile.CountTracks(); index++) {
+		BMediaTrack* track = mediaFile.TrackAt(index);
+		if (track == NULL)
+			continue;
+
+		media_format format;
+		std::memset(&format, 0, sizeof(format));
+		status_t status = track->EncodedFormat(&format);
+		if (status == B_OK
+			&& (format.type == B_MEDIA_ENCODED_AUDIO || format.type == B_MEDIA_RAW_AUDIO)) {
+			bigtime_t duration = track->Duration();
+			mediaFile.ReleaseTrack(track);
+			return duration > 0 ? (int32)(duration / 1000000) : 0;
+		}
+		mediaFile.ReleaseTrack(track);
+	}
+
+	return 0;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
 
 
 LocalLibraryScanner::LocalLibraryScanner(const BMessenger& target)
@@ -152,10 +193,44 @@ void LocalLibraryScanner::_SendTrack(const BEntry& entry, const char* rootPath) 
 	int32 extension = title.FindLast('.');
 	if (extension > 0)
 		title.Truncate(extension);
+	BString artist;
+	BString album;
+	BString genre;
+	int32 duration = 0;
+	int32 trackNumber = 0;
+
+	TagLib::FileRef file(path.Path(), true, TagLib::AudioProperties::Fast);
+	if (!file.isNull()) {
+		TagLib::Tag* tag = file.tag();
+		if (tag != NULL) {
+			BString taggedTitle = ConvertTagString(tag->title());
+			if (!taggedTitle.IsEmpty())
+				title = taggedTitle;
+			artist = ConvertTagString(tag->artist());
+			album = ConvertTagString(tag->album());
+			genre = ConvertTagString(tag->genre());
+			trackNumber = (int32)tag->track();
+		}
+
+		TagLib::AudioProperties* properties = file.audioProperties();
+		if (properties != NULL)
+			duration = properties->lengthInSeconds();
+	}
+
+	if (duration <= 0) {
+		entry_ref ref;
+		if (entry.GetRef(&ref) == B_OK)
+			duration = ReadMediaDuration(ref);
+	}
 
 	BMessage found(kMessageTrackFound);
 	found.AddString("path", path.Path());
 	found.AddString("title", title.String());
+	found.AddString("artist", artist.String());
+	found.AddString("album", album.String());
+	found.AddString("genre", genre.String());
+	found.AddInt32("duration", duration);
+	found.AddInt32("track_number", trackNumber);
 	found.AddString("folder", rootPath);
 	fTarget.SendMessage(&found);
 }

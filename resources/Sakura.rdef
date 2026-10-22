@@ -13,4 +13,5 @@ resource file_types message {
 	"types" = "audio"
 };
 
+resource(101, "BEOS:ICON") #'VICN' import "icon.hvif";
 resource(100, "about-icon.png") #'PNG ' import "icon.png";

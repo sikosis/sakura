@@ -9,6 +9,7 @@ required_files="
 LICENSE
 Makefile
 resources/Sakura.rdef
+resources/icon.hvif
 resources/icon.png
 src/AboutWindow.cpp
 src/AboutWindow.h
@@ -39,6 +40,11 @@ fi
 
 if ! grep -q 'application/x-vnd.sikosis-Sakura' src/SakuraApp.h; then
 	echo "Application signature is missing from src/SakuraApp.h" >&2
+	exit 1
+fi
+
+if ! grep -q 'VICN.*BEOS:ICON\|BEOS:ICON.*VICN' resources/Sakura.rdef; then
+	echo "Native application icon is missing from resources/Sakura.rdef" >&2
 	exit 1
 fi
 

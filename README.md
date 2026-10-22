@@ -13,17 +13,18 @@
 
 Sakura (Japanese for “Cherry Blossom”) is a native C++ BApplication for Haiku that is a music library first and a player second.
 
-The project is in its first local-library phase. It currently provides native navigation for the planned Library, Sources, Now Playing, Playlists and Settings screens, a persistent player bar, folder selection, background indexing of local audio files and basic Media Kit playback. Metadata extraction, seeking and queue management are the next implementation milestones.
+The project is in its first local-library phase. It currently provides native navigation for the planned Library, Sources, Now Playing, Playlists and Settings screens, a persistent player bar, folder selection, background indexing of local audio files, TagLib metadata extraction and basic Media Kit playback. Seeking and queue management are the next implementation milestones.
 
 ## Building on Haiku
 
 Sakura uses Haiku's standard Makefile Engine. From the repository root:
 
 ```sh
+pkgman install taglib_devel
 make
 ```
 
-The current shell only depends on libraries included with a Haiku development installation. The later library and provider phases described in [DESIGN.md](DESIGN.md) will add their dependencies as each feature becomes real.
+TagLib supplies consistent title, artist, album, genre, track-number and duration metadata across the supported local audio formats. The later library and provider phases described in [DESIGN.md](DESIGN.md) will add their dependencies as each feature becomes real.
 
 Run the repository checks with:
 

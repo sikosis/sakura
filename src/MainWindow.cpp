@@ -33,9 +33,6 @@
 #include <Entry.h>
 #include <Path.h>
 
-#include <cstring>
-
-
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "MainWindow"
 
@@ -59,20 +56,25 @@ static BStringView* PageHeading(const char* name, const char* text) {
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 
-static BView* CreateCollectionTab(const char* name, const char* emptyMessage) {
-	BView* view = new BView(name, B_WILL_DRAW);
-	view->SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
+static void AddUniqueListItem(BListView* list, const char* text) {
+	if (text == NULL || text[0] == '\0')
+		return;
 
-	BStringView* message = new BStringView("empty collection message", emptyMessage);
-	message->SetAlignment(B_ALIGN_CENTER);
-	message->SetHighUIColor(B_PANEL_TEXT_COLOR, B_DISABLED_LABEL_TINT);
+	BString value(text);
+	for (int32 index = 0; index < list->CountItems(); index++) {
+		BStringItem* item = dynamic_cast<BStringItem*>(list->ItemAt(index));
+		if (item == NULL)
+			continue;
 
-	BLayoutBuilder::Group<>(view, B_VERTICAL, 0.0f)
-		.SetInsets(24.0f)
-		.AddGlue()
-		.Add(message)
-		.AddGlue();
-	return view;
+		int comparison = value.ICompare(item->Text());
+		if (comparison == 0)
+			return;
+		if (comparison < 0) {
+			list->AddItem(new BStringItem(text), index);
+			return;
+		}
+	}
+	list->AddItem(new BStringItem(text));
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
@@ -80,9 +82,10 @@ static BView* CreateCollectionTab(const char* name, const char* emptyMessage) {
 MainWindow::MainWindow()
 	: BWindow(BRect(80, 80, 1180, 780), "Sakura", B_DOCUMENT_WINDOW,
 		B_ASYNCHRONOUS_CONTROLS), fCardLayout(NULL), fAudioPlayer(NULL), fFolderPanel(NULL),
-		fFoldersList(NULL), fNavigation(NULL), fSongsList(NULL), fPageTitle(NULL),
-		fSourceStatus(NULL), fTrackArtist(NULL), fTrackTitle(NULL), fLibraryTabs(NULL),
-		fPlayButton(NULL), fScanner(NULL), fVolumeSlider(NULL), fTrackCount(0) {
+		fAlbumsList(NULL), fArtistsList(NULL), fFoldersList(NULL), fGenresList(NULL),
+		fNavigation(NULL), fSongsList(NULL), fPageTitle(NULL), fSourceStatus(NULL),
+		fTrackArtist(NULL), fTrackTitle(NULL), fLibraryTabs(NULL), fPlayButton(NULL),
+		fScanner(NULL), fVolumeSlider(NULL), fTrackCount(0) {
 	BMenuBar* menuBar = new BMenuBar("menu bar");
 	BMenu* applicationMenu = new BMenu(B_TRANSLATE("Sakura"));
 	applicationMenu->AddItem(new BMenuItem(B_TRANSLATE("About Sakura" B_UTF8_ELLIPSIS),
@@ -202,9 +205,28 @@ void MainWindow::MessageReceived(BMessage* message) {
 		{
 			const char* path = NULL;
 			const char* title = NULL;
+			const char* artist = "";
+			const char* album = "";
+			const char* genre = "";
+			int32 duration = 0;
+			int32 trackNumber = 0;
 			if (message->FindString("title", &title) == B_OK
 				&& message->FindString("path", &path) == B_OK) {
-				fSongsList->AddItem(new TrackListItem(title, path));
+				message->FindString("artist", &artist);
+				message->FindString("album", &album);
+				message->FindString("genre", &genre);
+				message->FindInt32("duration", &duration);
+				message->FindInt32("track_number", &trackNumber);
+				fSongsList->AddItem(new TrackListItem(title, artist, album, genre, path,
+					duration, trackNumber));
+				AddUniqueListItem(fArtistsList, artist);
+				if (album[0] != '\0') {
+					BString albumLabel(album);
+					if (artist[0] != '\0')
+						albumLabel << "  —  " << artist;
+					AddUniqueListItem(fAlbumsList, albumLabel.String());
+				}
+				AddUniqueListItem(fGenresList, genre);
 				fTrackCount++;
 			}
 			break;
@@ -216,8 +238,9 @@ void MainWindow::MessageReceived(BMessage* message) {
 				fSongsList->ItemAt(fSongsList->CurrentSelection()));
 			if (item != NULL) {
 				if (!fAudioPlayer->IsPlaying()) {
-					fTrackTitle->SetText(item->Text());
-					fTrackArtist->SetText(B_TRANSLATE("Local music"));
+					fTrackTitle->SetText(item->Title());
+					fTrackArtist->SetText(item->Artist()[0] != '\0'
+						? item->Artist() : B_TRANSLATE("Unknown artist"));
 				}
 				fPlayButton->SetEnabled(true);
 			}
@@ -291,12 +314,15 @@ BView* MainWindow::_CreateLibraryView() {
 	fLibraryTabs->SetExplicitAlignment(
 		BAlignment(B_ALIGN_USE_FULL_WIDTH, B_ALIGN_USE_FULL_HEIGHT));
 	fLibraryTabs->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
-	fLibraryTabs->AddTab(CreateCollectionTab(B_TRANSLATE("Artists"),
-		B_TRANSLATE("Artists will appear here after your first library scan.")));
-	fLibraryTabs->AddTab(CreateCollectionTab(B_TRANSLATE("Albums"),
-		B_TRANSLATE("Album artwork will appear here after your first library scan.")));
-	fLibraryTabs->AddTab(CreateCollectionTab(B_TRANSLATE("Genres"),
-		B_TRANSLATE("Genres will appear here after your first library scan.")));
+	fArtistsList = new BListView("artists", B_SINGLE_SELECTION_LIST);
+	fLibraryTabs->AddTab(new BScrollView(B_TRANSLATE("Artists"), fArtistsList,
+		B_FRAME_EVENTS, false, true, B_FANCY_BORDER));
+	fAlbumsList = new BListView("albums", B_SINGLE_SELECTION_LIST);
+	fLibraryTabs->AddTab(new BScrollView(B_TRANSLATE("Albums"), fAlbumsList,
+		B_FRAME_EVENTS, false, true, B_FANCY_BORDER));
+	fGenresList = new BListView("genres", B_SINGLE_SELECTION_LIST);
+	fLibraryTabs->AddTab(new BScrollView(B_TRANSLATE("Genres"), fGenresList,
+		B_FRAME_EVENTS, false, true, B_FANCY_BORDER));
 	fSongsList = new BListView("songs", B_SINGLE_SELECTION_LIST);
 	fSongsList->SetSelectionMessage(new BMessage(kMessageSongSelected));
 	fSongsList->SetInvocationMessage(new BMessage(kMessagePlaySelection));
@@ -482,14 +508,18 @@ void MainWindow::_PlaySelectedTrack() {
 		return;
 	}
 
-	fTrackTitle->SetText(item->Text());
-	fTrackArtist->SetText(B_TRANSLATE("Local music"));
+	fTrackTitle->SetText(item->Title());
+	fTrackArtist->SetText(item->Artist()[0] != '\0'
+		? item->Artist() : B_TRANSLATE("Unknown artist"));
 	_SetPlaybackState(true);
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 
 void MainWindow::_RescanLibrary() {
+	fAlbumsList->MakeEmpty();
+	fArtistsList->MakeEmpty();
+	fGenresList->MakeEmpty();
 	fSongsList->MakeEmpty();
 	fTrackCount = 0;
 	for (size_t index = 0; index < fFolderPaths.size(); index++) {

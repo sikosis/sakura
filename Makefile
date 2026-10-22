@@ -19,7 +19,7 @@ SRCS = \
 RDEFS = resources/Sakura.rdef
 RSRCS =
 
-LIBS = $(STDCPPLIBS) be media translation localestub tracker
+LIBS = $(STDCPPLIBS) be media tag translation localestub tracker
 LIBPATHS =
 SYSTEM_INCLUDE_PATHS =
 LOCAL_INCLUDE_PATHS = src

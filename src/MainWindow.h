@@ -47,7 +47,10 @@ private:
 	BCardLayout* fCardLayout;
 	AudioPlayer* fAudioPlayer;
 	BFilePanel* fFolderPanel;
+	BListView* fAlbumsList;
+	BListView* fArtistsList;
 	BListView* fFoldersList;
+	BListView* fGenresList;
 	BListView* fNavigation;
 	BListView* fSongsList;
 	BStringView* fPageTitle;
