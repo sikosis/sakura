@@ -13,7 +13,8 @@ enum {
 	kMessageSongSelected = 'sgsl',
 	kMessagePlaySelection = 'plsl',
 	kMessageTogglePlayback = 'tgpl',
-	kMessagePlaybackFinished = 'plfn'
+	kMessagePlaybackFinished = 'plfn',
+	kMessageVolumeChanged = 'vlch'
 };
 
 

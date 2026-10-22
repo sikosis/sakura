@@ -20,6 +20,7 @@ public:
 
 	bool IsPlaying() const;
 	status_t Play(const entry_ref& ref);
+	void SetVolume(float volume);
 	void Stop();
 
 private:
@@ -36,6 +37,7 @@ private:
 	BSoundPlayer* fSoundPlayer;
 	bool fFinishSent;
 	bool fPlaying;
+	float fVolume;
 };
 
 

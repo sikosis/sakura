@@ -82,7 +82,7 @@ MainWindow::MainWindow()
 		B_ASYNCHRONOUS_CONTROLS), fCardLayout(NULL), fAudioPlayer(NULL), fFolderPanel(NULL),
 		fFoldersList(NULL), fNavigation(NULL), fSongsList(NULL), fPageTitle(NULL),
 		fSourceStatus(NULL), fTrackArtist(NULL), fTrackTitle(NULL), fLibraryTabs(NULL),
-		fPlayButton(NULL), fScanner(NULL), fTrackCount(0) {
+		fPlayButton(NULL), fScanner(NULL), fVolumeSlider(NULL), fTrackCount(0) {
 	BMenuBar* menuBar = new BMenuBar("menu bar");
 	BMenu* applicationMenu = new BMenu(B_TRANSLATE("Sakura"));
 	applicationMenu->AddItem(new BMenuItem(B_TRANSLATE("About Sakura" B_UTF8_ELLIPSIS),
@@ -107,11 +107,15 @@ MainWindow::MainWindow()
 		B_FRAME_EVENTS, false, false, B_FANCY_BORDER);
 	navigationScroll->SetExplicitMinSize(BSize(125.0f, B_SIZE_UNSET));
 	navigationScroll->SetExplicitMaxSize(BSize(200.0f, B_SIZE_UNLIMITED));
+	navigationScroll->SetExplicitAlignment(
+		BAlignment(B_ALIGN_LEFT, B_ALIGN_USE_FULL_HEIGHT));
 
 	fPageTitle = PageHeading("page title", B_TRANSLATE("Library"));
 
 	BView* content = new BView("page content", B_WILL_DRAW);
 	content->SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
+	content->SetExplicitAlignment(
+		BAlignment(B_ALIGN_USE_FULL_WIDTH, B_ALIGN_USE_FULL_HEIGHT));
 	fCardLayout = new BCardLayout();
 	content->SetLayout(fCardLayout);
 	fCardLayout->AddView(_CreateLibraryView());
@@ -122,6 +126,8 @@ MainWindow::MainWindow()
 
 	BView* workspace = new BView("workspace", B_WILL_DRAW);
 	workspace->SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
+	workspace->SetExplicitAlignment(
+		BAlignment(B_ALIGN_USE_FULL_WIDTH, B_ALIGN_USE_FULL_HEIGHT));
 	BLayoutBuilder::Group<>(workspace, B_VERTICAL, 10.0f)
 		.SetInsets(12.0f)
 		.Add(fPageTitle)
@@ -130,7 +136,7 @@ MainWindow::MainWindow()
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0.0f)
 		.Add(menuBar)
 		.AddGroup(B_HORIZONTAL, 0.0f, 1.0f)
-			.Add(navigationScroll)
+			.Add(navigationScroll, 0.0f)
 			.Add(new BSeparatorView(B_VERTICAL))
 			.Add(workspace, 1.0f)
 		.End()
@@ -233,6 +239,10 @@ void MainWindow::MessageReceived(BMessage* message) {
 			_SetPlaybackState(false);
 			break;
 
+		case kMessageVolumeChanged:
+			fAudioPlayer->SetVolume(fVolumeSlider->Value() / 100.0f);
+			break;
+
 		case kMessageScanFinished:
 		{
 			BString status;
@@ -263,6 +273,8 @@ bool MainWindow::QuitRequested() {
 BView* MainWindow::_CreateLibraryView() {
 	BView* view = new BView("library page", B_WILL_DRAW);
 	view->SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
+	view->SetExplicitAlignment(
+		BAlignment(B_ALIGN_USE_FULL_WIDTH, B_ALIGN_USE_FULL_HEIGHT));
 
 	BTextControl* search = new BTextControl("search", "", "Search your library", NULL);
 	search->SetExplicitMaxSize(BSize(360.0f, B_SIZE_UNSET));
@@ -287,8 +299,9 @@ BView* MainWindow::_CreateLibraryView() {
 
 	BLayoutBuilder::Group<>(view, B_VERTICAL, 12.0f)
 		.AddGroup(B_HORIZONTAL, 8.0f)
-			.Add(search, 1.0f)
-			.Add(allSources)
+			.Add(search, 0.0f)
+			.Add(allSources, 0.0f)
+			.AddGlue()
 		.End()
 		.Add(fLibraryTabs, 1.0f);
 	return view;
@@ -377,11 +390,11 @@ BView* MainWindow::_CreatePlayerBar() {
 	BSlider* position = new BSlider("position", "", NULL, 0, 100, B_HORIZONTAL);
 	position->SetEnabled(false);
 	position->SetExplicitMinSize(BSize(100.0f, B_SIZE_UNSET));
-	BSlider* volume = new BSlider("volume", B_TRANSLATE("Volume"), NULL, 0, 100,
-		B_HORIZONTAL);
-	volume->SetValue(80);
-	volume->SetEnabled(false);
-	volume->SetExplicitMaxSize(BSize(120.0f, B_SIZE_UNSET));
+	fVolumeSlider = new BSlider("volume", B_TRANSLATE("Volume"),
+		new BMessage(kMessageVolumeChanged), 0, 100, B_HORIZONTAL);
+	fVolumeSlider->SetModificationMessage(new BMessage(kMessageVolumeChanged));
+	fVolumeSlider->SetValue(80);
+	fVolumeSlider->SetExplicitMaxSize(BSize(120.0f, B_SIZE_UNSET));
 
 	BLayoutBuilder::Group<>(bar, B_VERTICAL, 4.0f)
 		.SetInsets(14.0f, 10.0f)
@@ -395,7 +408,7 @@ BView* MainWindow::_CreatePlayerBar() {
 			.Add(previous)
 			.Add(fPlayButton)
 			.Add(next)
-			.Add(volume)
+			.Add(fVolumeSlider)
 		.End()
 		.Add(position, 1.0f);
 	return bar;

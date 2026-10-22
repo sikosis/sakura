@@ -13,7 +13,7 @@
 
 AudioPlayer::AudioPlayer(const BMessenger& target)
 	: fLock("audio player"), fTarget(target), fMediaFile(NULL), fMediaTrack(NULL),
-		fSoundPlayer(NULL), fFinishSent(false), fPlaying(false) {
+		fSoundPlayer(NULL), fFinishSent(false), fPlaying(false), fVolume(0.8f) {
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
@@ -83,6 +83,7 @@ status_t AudioPlayer::Play(const entry_ref& ref) {
 
 	fFinishSent = false;
 	fPlaying = true;
+	fSoundPlayer->SetVolume(fVolume);
 	status = fSoundPlayer->Start();
 	if (status != B_OK) {
 		fPlaying = false;
@@ -96,6 +97,15 @@ status_t AudioPlayer::Play(const entry_ref& ref) {
 	}
 	fSoundPlayer->SetHasData(true);
 	return B_OK;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+void AudioPlayer::SetVolume(float volume) {
+	BAutolock locker(&fLock);
+	fVolume = std::max(0.0f, std::min(1.0f, volume));
+	if (fSoundPlayer != NULL)
+		fSoundPlayer->SetVolume(fVolume);
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 

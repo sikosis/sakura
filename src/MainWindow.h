@@ -13,6 +13,7 @@ class BCardLayout;
 class BButton;
 class BFilePanel;
 class BListView;
+class BSlider;
 class BStringView;
 class BTabView;
 class BView;
@@ -56,6 +57,7 @@ private:
 	BTabView* fLibraryTabs;
 	BButton* fPlayButton;
 	LocalLibraryScanner* fScanner;
+	BSlider* fVolumeSlider;
 	std::vector<BString> fFolderPaths;
 	int32 fTrackCount;
 };
